@@ -1,6 +1,6 @@
 from django.urls import path
-from .views import hello_api
+from .views import sumary
 
 urlpatterns = [
-    path('hello/', hello_api),
+    path('sumary/', sumary),
 ]

@@ -12,7 +12,11 @@ nltk.download('punkt_tab')
 
 @api_view(['POST'])
 def sumary(request):
-    content = request.data.get('content', 'Unknown')
+    data = request.data.get('data')
+    if not data or 'content' not in data:
+        return Response({"message": "Thiếu nội dung cần tóm tắt."}, status=400)
+
+    content = data['content']
 
     # Tiền xử lý văn bản
     contents_parsed = content.lower() #Biến đổi hết thành chữ thường

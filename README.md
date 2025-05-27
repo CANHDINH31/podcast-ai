@@ -4,7 +4,7 @@
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate      # Trên Windows dùng: venv\Scripts\activate
+source venv/bin/activate      # Trên Windows dùng: source venv/Scripts/activate
 ```
 
 ## 2. Cài đặt thư viện cần thiết

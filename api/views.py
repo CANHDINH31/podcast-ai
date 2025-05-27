@@ -1,13 +1,12 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-import nltk
-from gensim.models import KeyedVectors 
 from pyvi import ViTokenizer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, pairwise_distances_argmin_min
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np 
 import re
+from underthesea import sent_tokenize as vi_sent_tokenize
 
 @api_view(['POST'])
 def sumary(request):
@@ -26,8 +25,9 @@ def sumary(request):
     contents_parsed = re.sub(r'\s*\.\s*', '. ', contents_parsed)  # chuẩn hóa dấu chấm và khoảng trắng
     contents_parsed = contents_parsed.strip()
 
-    # Tách các câu trong văn bản
-    sentences = nltk.sent_tokenize(contents_parsed)
+    # Tách các câu trong văn bản dùng vi_sent_tokenize cho tiếng việt chuẩn hơn
+    sentences = vi_sent_tokenize(contents_parsed)
+
     if len(sentences) < 2:
         return Response({"message": "Không đủ dữ liệu để tóm tắt."}, status=400)
 

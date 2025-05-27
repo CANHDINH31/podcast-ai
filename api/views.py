@@ -9,8 +9,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np 
 import re
 
-nltk.download('punkt_tab')
-
 @api_view(['POST'])
 def sumary(request):
     data = request.data.get('data')
@@ -34,7 +32,7 @@ def sumary(request):
         return Response({"message": "Không đủ dữ liệu để tóm tắt."}, status=400)
 
     # Tách từ trong câu
-    sentences_tokenized = [ViTokenizer.tokenize(sentence) for sentence in sentences]
+    sentences_tokenized = [remove_stop_words(ViTokenizer.tokenize(sentence)) for sentence in sentences]
 
     # Khởi tạo TF-IDF Vectorizer
     vectorizer = TfidfVectorizer()
@@ -84,3 +82,9 @@ def sumary(request):
 
 
     return Response({"message": f"{summary}"})
+
+
+
+def remove_stop_words(tokens):
+    stop_words = set(['là', 'có', 'của', 'và', 'lúc', 'khi', 'với', 'cho', 'được', 'này', 'rằng', 'một', 'những'])  
+    return ' '.join([word for word in tokens.split() if word.lower() not in stop_words])

@@ -6,7 +6,6 @@ from sklearn.metrics import silhouette_score, pairwise_distances_argmin_min
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np 
 import re
-import nltk
 import os
 from django.conf import settings
 
@@ -23,10 +22,9 @@ def sumary(request):
 
     # Tiền xử lý văn bản
     contents_parsed = clean_text_vi(content)
-    contents_parsed = contents_parsed.strip()
 
     # Tách các câu trong văn bản, làm sạch và lọc câu ngắn
-    sentences = [s.strip() for s in nltk.sent_tokenize(contents_parsed) if len(s.strip()) > 5]
+    sentences = [s for s in viet_sent_tokenize(contents_parsed) if len(s) > 5]
 
     if len(sentences) < 2:
         return Response({"message": "Không đủ dữ liệu để tóm tắt."}, status=400)
@@ -65,25 +63,24 @@ def sumary(request):
     kmeans = kmeans.fit(X)
 
     # Xây dựng đoạn văn bản tóm tắt
-
-    avg = []
-    for j in range(n_clusters):
-        idx = np.where(kmeans.labels_ == j)[0]
-        avg.append(np.mean(idx))
-    closest, _ = pairwise_distances_argmin_min(kmeans.cluster_centers_, X)
-    ordering = sorted(range(n_clusters), key=lambda k: avg[k])
-    summary = ' '.join([sentences[closest[idx]] for idx in ordering])
+    ordering = sorted(
+        range(n_clusters),
+        key=lambda cluster_id: np.mean(np.where(kmeans.labels_ == cluster_id)[0])
+    )
+    
+    summary_sentences = []
+    for cluster_id in ordering:
+        indices_in_cluster = np.where(kmeans.labels_ == cluster_id)[0]
+        if len(indices_in_cluster) == 0:
+            continue
+        closest_idx = indices_in_cluster[np.argmin(np.linalg.norm(X[indices_in_cluster] - kmeans.cluster_centers_[cluster_id], axis=1))] 
+        summary_sentences.append(sentences[closest_idx])
+    summary = ' '.join(summary_sentences)
     
     # Làm sạch lần cuối
-    summary = re.sub(r'\.{2,}', '.', summary)
-    summary = re.sub(r'\s*\.\s*', '. ', summary)
-    summary = summary.strip('. ') + '.'  # Đảm bảo có dấu chấm kết thúc
-
-
+    summary = normalize_summary_text(summary)
 
     return Response({"message": f"{summary}"})
-
-
 
 def remove_stop_words(tokens):
     stop_words = load_stopwords()
@@ -92,7 +89,6 @@ def remove_stop_words(tokens):
 def load_stopwords():
     with open(STOPWORDS_FILE, encoding='utf-8') as f:
         return set(line.strip() for line in f if line.strip())
-
 
 # Tiền xử lý tiếng việt
 # Thay thế cụm viết tắt, từ rác phổ biến (ví dụ: “ko” → “không”, “j” → “gì”, v.v.)
@@ -106,4 +102,26 @@ def clean_text_vi(text):
     text = re.sub(r'\s*\.\s*', '. ', text)
     text = re.sub(r'[^a-zA-Z0-9\s\.\,\–\-àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
+    return text.strip()
+
+def normalize_summary_text(text):
+    """
+    Làm sạch và chuẩn hóa văn bản tóm tắt:
+    - Chuẩn hóa dấu chấm
+    - Xóa khoảng trắng dư thừa
+    - Viết hoa chữ cái đầu
+    - Đảm bảo có dấu chấm kết thúc
+    """
+    text = re.sub(r'\s*\.\s*', '. ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    if not text:
+        return ''
+    text = text[0].upper() + text[1:]
+    if not text.endswith('.'):
+        text += '.'
     return text
+
+def viet_sent_tokenize(text):
+    # Tách câu đơn giản theo dấu ., !, ?
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    return [s.strip() for s in sentences if len(s.strip()) > 0]

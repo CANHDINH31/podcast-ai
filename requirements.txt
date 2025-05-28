@@ -5,6 +5,7 @@ django-cors-headers==4.7.0
 djangorestframework==3.16.0
 gensim==4.3.3
 joblib==1.4.2
+maturin==1.8.6
 nltk==3.9.1
 numpy==1.26.4
 python-crfsuite==0.9.11

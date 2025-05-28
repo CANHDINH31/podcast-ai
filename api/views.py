@@ -6,27 +6,27 @@ from sklearn.metrics import silhouette_score, pairwise_distances_argmin_min
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np 
 import re
-from underthesea import sent_tokenize as vi_sent_tokenize
+import nltk
+import os
+from django.conf import settings
+
+STOPWORDS_FILE = os.path.join(settings.BASE_DIR, 'api', 'data', 'vietnamese-stopwords.txt')
 
 @api_view(['POST'])
 def sumary(request):
     data = request.data.get('data')
     if not data or 'content' not in data:
         return Response({"message": "Thiếu nội dung cần tóm tắt."}, status=400)
-   
 
     content = data['content']
     
 
     # Tiền xử lý văn bản
-    contents_parsed = content.lower()
-    contents_parsed = re.sub(r'\s*\n\s*', '. ', contents_parsed)  # xóa khoảng trắng trước/sau \n
-    contents_parsed = re.sub(r'\.{2,}', '.', contents_parsed)     # loại bỏ dấu chấm lặp lại
-    contents_parsed = re.sub(r'\s*\.\s*', '. ', contents_parsed)  # chuẩn hóa dấu chấm và khoảng trắng
+    contents_parsed = clean_text_vi(content)
     contents_parsed = contents_parsed.strip()
 
-    # Tách các câu trong văn bản dùng vi_sent_tokenize cho tiếng việt chuẩn hơn
-    sentences = vi_sent_tokenize(contents_parsed)
+    # Tách các câu trong văn bản, làm sạch và lọc câu ngắn
+    sentences = [s.strip() for s in nltk.sent_tokenize(contents_parsed) if len(s.strip()) > 5]
 
     if len(sentences) < 2:
         return Response({"message": "Không đủ dữ liệu để tóm tắt."}, status=400)
@@ -86,5 +86,24 @@ def sumary(request):
 
 
 def remove_stop_words(tokens):
-    stop_words = set(['là', 'có', 'của', 'và', 'lúc', 'khi', 'với', 'cho', 'được', 'này', 'rằng', 'một', 'những'])  
+    stop_words = load_stopwords()
     return ' '.join([word for word in tokens.split() if word.lower() not in stop_words])
+
+def load_stopwords():
+    with open(STOPWORDS_FILE, encoding='utf-8') as f:
+        return set(line.strip() for line in f if line.strip())
+
+
+# Tiền xử lý tiếng việt
+# Thay thế cụm viết tắt, từ rác phổ biến (ví dụ: “ko” → “không”, “j” → “gì”, v.v.)
+# Loại bỏ ký tự đặc biệt nhưng giữ lại ?, !, . để phân biệt câu
+# Loại bỏ từ dư khi tokenize bị lỗi
+def clean_text_vi(text):
+    text = text.lower()
+    text = re.sub(r'\s*\n\s*', '. ', text)
+    text = re.sub(r'\.{2,}', '.', text)
+    text = re.sub(r'[!?]', '.', text)  # gom các dấu ?! lại thành .
+    text = re.sub(r'\s*\.\s*', '. ', text)
+    text = re.sub(r'[^a-zA-Z0-9\s\.\,\–\-àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]', ' ', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text

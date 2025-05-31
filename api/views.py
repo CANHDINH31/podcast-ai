@@ -2,7 +2,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from pyvi import ViTokenizer
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score, pairwise_distances_argmin_min
+from sklearn.metrics import silhouette_score
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np 
 import re
@@ -19,7 +19,6 @@ def sumary(request):
 
     content = data['content']
     
-
     # Tiền xử lý văn bản
     contents_parsed = clean_text_vi(content)
 
@@ -32,39 +31,40 @@ def sumary(request):
     # Tách từ trong câu
     sentences_tokenized = [remove_stop_words(ViTokenizer.tokenize(sentence)) for sentence in sentences]
 
-    # Khởi tạo TF-IDF Vectorizer
+    # TF-IDF vector hóa
     vectorizer = TfidfVectorizer()
+    X = vectorizer.fit_transform(sentences_tokenized).toarray()
 
-    # Chuyển các câu thành vector
-    X = vectorizer.fit_transform(sentences_tokenized)
+    # === Thêm thông tin vị trí câu vào vector đặc trưng ===
+    sentence_positions = np.array([
+        [(len(sentences) - i) / len(sentences)]  # Trọng số: câu đầu cao hơn
+        for i in range(len(sentences))
+    ])
+    X_with_pos = np.hstack([X, sentence_positions])  # Nối vector TF-IDF với trọng số vị trí
 
-    # Chuyển thành mảng numpy (tùy chọn)
-    X = X.toarray()
-    
-    # === Tự động chọn số cụm phù hợp bằng silhouette_score ===
+    # === Tự động chọn số cụm tốt nhất ===
     best_k = 2
     best_score = -1
-    max_k = min(10, len(sentences))  # Giới hạn cụm tối đa
+    max_k = min(10, len(sentences))
+
     for k in range(2, max_k + 1):
         try:
             km = KMeans(n_clusters=k, random_state=0, n_init='auto')
-            labels = km.fit_predict(X)
-            score = silhouette_score(X, labels)
+            labels = km.fit_predict(X_with_pos)
+            score = silhouette_score(X_with_pos, labels)
             if score > best_score:
                 best_score = score
                 best_k = k
         except Exception:
             continue
 
-    n_clusters = best_k
-    
     # Huấn luyện lại với số cụm tối ưu
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init='auto')
-    kmeans = kmeans.fit(X)
+    kmeans = KMeans(n_clusters=best_k, random_state=0, n_init='auto')
+    kmeans.fit(X_with_pos)
 
-    # Xây dựng đoạn văn bản tóm tắt
+    # === Xây dựng đoạn văn bản tóm tắt ===
     ordering = sorted(
-        range(n_clusters),
+        range(best_k),
         key=lambda cluster_id: np.mean(np.where(kmeans.labels_ == cluster_id)[0])
     )
     
@@ -73,45 +73,39 @@ def sumary(request):
         indices_in_cluster = np.where(kmeans.labels_ == cluster_id)[0]
         if len(indices_in_cluster) == 0:
             continue
-        closest_idx = indices_in_cluster[np.argmin(np.linalg.norm(X[indices_in_cluster] - kmeans.cluster_centers_[cluster_id], axis=1))] 
+        closest_idx = indices_in_cluster[np.argmin(
+            np.linalg.norm(X_with_pos[indices_in_cluster] - kmeans.cluster_centers_[cluster_id], axis=1)
+        )]
         summary_sentences.append(sentences[closest_idx])
+
     summary = ' '.join(summary_sentences)
-    
-    # Làm sạch lần cuối
     summary = normalize_summary_text(summary)
 
     return Response({"message": f"{summary}"})
+
 
 def remove_stop_words(tokens):
     stop_words = load_stopwords()
     return ' '.join([word for word in tokens.split() if word.lower() not in stop_words])
 
+
 def load_stopwords():
     with open(STOPWORDS_FILE, encoding='utf-8') as f:
         return set(line.strip() for line in f if line.strip())
 
-# Tiền xử lý tiếng việt
-# Thay thế cụm viết tắt, từ rác phổ biến (ví dụ: “ko” → “không”, “j” → “gì”, v.v.)
-# Loại bỏ ký tự đặc biệt nhưng giữ lại ?, !, . để phân biệt câu
-# Loại bỏ từ dư khi tokenize bị lỗi
+
 def clean_text_vi(text):
     text = text.lower()
     text = re.sub(r'\s*\n\s*', '. ', text)
     text = re.sub(r'\.{2,}', '.', text)
-    text = re.sub(r'[!?]', '.', text)  # gom các dấu ?! lại thành .
+    text = re.sub(r'[!?]', '.', text)
     text = re.sub(r'\s*\.\s*', '. ', text)
     text = re.sub(r'[^a-zA-Z0-9\s\.\,\–\-àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text.strip()
 
+
 def normalize_summary_text(text):
-    """
-    Làm sạch và chuẩn hóa văn bản tóm tắt:
-    - Chuẩn hóa dấu chấm
-    - Xóa khoảng trắng dư thừa
-    - Viết hoa chữ cái đầu
-    - Đảm bảo có dấu chấm kết thúc
-    """
     text = re.sub(r'\s*\.\s*', '. ', text)
     text = re.sub(r'\s+', ' ', text).strip()
     if not text:
@@ -121,7 +115,7 @@ def normalize_summary_text(text):
         text += '.'
     return text
 
+
 def viet_sent_tokenize(text):
-    # Tách câu đơn giản theo dấu ., !, ?
     sentences = re.split(r'(?<=[.!?])\s+', text)
     return [s.strip() for s in sentences if len(s.strip()) > 0]

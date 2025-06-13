@@ -26,6 +26,7 @@ def sumary(request):
     # Tách các câu trong văn bản, làm sạch và lọc câu ngắn
     sentences = [s for s in viet_sent_tokenize(contents_parsed) if len(s) > 5]
 
+
     if len(sentences) < 2:
         return Response({"message": "Không đủ dữ liệu để tóm tắt."}, status=400)
 
@@ -40,7 +41,7 @@ def sumary(request):
 
     # Chuyển thành mảng numpy (tùy chọn)
     X = X.toarray()
-    
+
     # === Tự động chọn số cụm phù hợp bằng silhouette_score ===
     best_k = 2
     best_score = -1
@@ -109,16 +110,25 @@ def normalize_summary_text(text):
     Làm sạch và chuẩn hóa văn bản tóm tắt:
     - Chuẩn hóa dấu chấm
     - Xóa khoảng trắng dư thừa
-    - Viết hoa chữ cái đầu
+    - Viết hoa chữ cái đầu mỗi câu
     - Đảm bảo có dấu chấm kết thúc
     """
+    # Chuẩn hóa dấu chấm
     text = re.sub(r'\s*\.\s*', '. ', text)
     text = re.sub(r'\s+', ' ', text).strip()
+
     if not text:
         return ''
-    text = text[0].upper() + text[1:]
+
+    # Viết hoa sau mỗi dấu chấm
+    sentences = [s.strip().capitalize() for s in text.split('.')]
+    sentences = [s for s in sentences if s]  # bỏ câu rỗng
+    text = '. '.join(sentences)
+
+    # Đảm bảo kết thúc bằng dấu chấm
     if not text.endswith('.'):
         text += '.'
+
     return text
 
 def viet_sent_tokenize(text):
